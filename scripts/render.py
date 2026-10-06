@@ -154,8 +154,9 @@ server {{
 {tls}    server_name {r};
     location = /livekit/sfu {{ return 308 /livekit/sfu/; }}
     location ^~ /livekit/sfu/ {{
-        rewrite ^/livekit/sfu/(.*)$ /$1 break;
+        # Set the upstream before rewrite: break skips subsequent set directives.
         set $sfu http://livekit:7880;
+        rewrite ^/livekit/sfu/(.*)$ /$1 break;
         proxy_pass $sfu;
         proxy_set_header Upgrade $http_upgrade;
         proxy_set_header Connection $connection_upgrade;
