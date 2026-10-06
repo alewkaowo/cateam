@@ -6,16 +6,29 @@ import hashlib
 import hmac
 import json
 import os
+import re
 from pathlib import Path
 import secrets
 import ssl
 import sys
 import time
 from urllib.error import HTTPError
-from urllib.parse import quote
+from urllib.parse import quote, urlsplit
 from urllib.request import Request, urlopen
 
 from render import ROOT, load
+
+
+def describe_http_error(error, method, host, path):
+    """Keep endpoint/status and a protocol code; never log body text or queries."""
+    detail = 'non-JSON response'
+    try:
+        body = json.loads(error.read(8192))
+        code = body.get('errcode') if isinstance(body, dict) else None
+        detail = code if isinstance(code, str) and re.fullmatch(r'M_[A-Z0-9_]{1,80}', code) else 'JSON response'
+    except (ValueError, OSError):
+        pass
+    return f'{method} https://{host}{urlsplit(path).path}: HTTP {error.code} ({detail})'
 
 
 def main():
@@ -24,7 +37,7 @@ def main():
     context = ssl.create_default_context(cafile=ca)
 
     def request(host, path, method='GET', data=None, token=None, raw=False, extra=None):
-        headers = extra or {}
+        headers = dict(extra or {})
         if token:
             headers['Authorization'] = 'Bearer ' + token
         if isinstance(data, dict):
@@ -33,9 +46,14 @@ def main():
         elif data is not None:
             headers['Content-Type'] = 'application/octet-stream'
         url = f'https://{host}' + path
-        with urlopen(Request(url, data=data, method=method, headers=headers), context=context, timeout=30) as response:
-            body = response.read()
-            return body if raw else json.loads(body)
+        print(f'Probe: {method} https://{host}{urlsplit(path).path}', flush=True)
+        try:
+            with urlopen(Request(url, data=data, method=method, headers=headers), context=context, timeout=30) as response:
+                body = response.read()
+                return body if raw else json.loads(body)
+        except HTTPError as error:
+            error.probe_detail = describe_http_error(error, method, host, path)
+            raise
 
     def api(path, *args, **kwargs):
         return request(e['MATRIX_DOMAIN'], path, *args, **kwargs)
@@ -150,6 +168,7 @@ if __name__ == '__main__':
     try:
         main()
     except Exception as error:
-        # Do not include response bodies or request URLs (may contain JWTs).
-        print(f'Probe failed: {type(error).__name__}' + (f' HTTP {error.code}' if isinstance(error, HTTPError) else ''), file=sys.stderr)
+        # Never print arbitrary exception messages, response bodies or URL queries.
+        detail = getattr(error, 'probe_detail', None)
+        print('Probe failed: ' + (detail or type(error).__name__), file=sys.stderr)
         sys.exit(1)

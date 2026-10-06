@@ -511,6 +511,7 @@ curl -fsS https://matrix.cateam.online/.well-known/matrix/client
 - **WSS 502:** проверить nginx rewrite `/livekit/sfu/`, backend DNS и LiveKit 7880.
 - **Звонок есть, медиа нет:** проверить UDP mux, PUBLIC_IPV4, TURN credentials, relay range и provider NAT; HTTPS alone недостаточно.
 - **HTTP 507:** проверить диск и monitor journal, освободить место, выполнить `make monitor`.
+- **CI probe: HTTP 500:** последняя строка `Probe:` и строка `Probe failed:` показывают метод, endpoint и Matrix errcode без query-параметров и тела ответа. Открыть следующий шаг `Diagnostics` в GitHub Actions: traceback Synapse и ошибки matrixrtc/nginx позволяют определить причину. Сам код 500 её не устанавливает. CI проверяет временный стек до публикации образа и SSH-деплоя; такой сбой останавливает публикацию и деплой.
 - **OOM/перезапуски:** проверить `docker inspect` State.OOMKilled, `make doctor`, качество видео и свободную RAM; не отключать лимиты без оценки VPS.
 
 Локально выполнены config/security unit tests, Python/shell syntax checks,
