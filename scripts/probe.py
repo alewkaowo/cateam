@@ -125,7 +125,7 @@ def main():
     server, mid = uri.removeprefix('mxc://').split('/', 1)
     mediapath = '/_matrix/client/v1/media/download/' + quote(server, safe='') + '/' + quote(mid, safe='')
     assert api(mediapath, token=token, raw=True) == content
-    transports = api('/_matrix/client/unstable/org.matrix.msc4143/rtc/transports', token=owner)['transports']
+    transports = api('/_matrix/client/unstable/org.matrix.msc4143/rtc/transports', token=owner)['rtc_transports']
     assert any(t.get('url') == f'wss://{e["RTC_DOMAIN"]}/livekit/sfu' for t in transports)
     payload = {'server_name': e['MATRIX_DOMAIN'], 'url': f'wss://{e["RTC_DOMAIN"]}/livekit/sfu',
                'room_id': room, 'slot_id': 'm.call',
