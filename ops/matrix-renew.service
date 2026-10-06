@@ -1,0 +1,10 @@
+[Unit]
+Description=Renew Matrix TLS certificate and reload nginx
+Requires=docker.service
+After=docker.service network-online.target
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+WorkingDirectory=/opt/matrix-infrastructure
+ExecStart=/usr/bin/python3 /opt/matrix-infrastructure/scripts/manage.py renew

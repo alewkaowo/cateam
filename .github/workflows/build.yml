@@ -1,0 +1,119 @@
+name: Build, test, publish and optionally deploy
+on:
+  push:
+    branches: [main, master]
+    tags: ['v*']
+  pull_request:
+  workflow_dispatch:
+permissions:
+  contents: read
+concurrency:
+  group: matrix-${{ github.ref }}
+  cancel-in-progress: false
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    timeout-minutes: 35
+    permissions:
+      contents: read
+      packages: write
+    outputs:
+      prefix: ${{ steps.names.outputs.prefix }}
+    steps:
+      - uses: actions/checkout@v4
+      - name: Configuration and security tests
+        run: make check
+      - id: names
+        env:
+          REPOSITORY: ${{ github.repository }}
+        run: echo "prefix=ghcr.io/${REPOSITORY,,}" >> "$GITHUB_OUTPUT"
+      - uses: docker/setup-buildx-action@v3
+      - name: Build nginx + Element (amd64)
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: docker/nginx/Dockerfile
+          platforms: linux/amd64
+          load: true
+          tags: ${{ steps.names.outputs.prefix }}/web:ci
+          cache-from: type=gha,scope=web
+          cache-to: type=gha,mode=max,scope=web
+      - name: Prepare disposable integration environment
+        env:
+          CI_IMAGE_PREFIX: ${{ steps.names.outputs.prefix }}
+        run: python3 scripts/ci_setup.py
+      - name: Validate and launch all services
+        run: |
+          make config
+          make compose ARGS='up -d --wait --wait-timeout 240'
+          make compose ARGS='exec -T nginx nginx -t'
+      - name: Chat, files, MatrixRTC JWT and SFU WebSocket
+        env:
+          PROBE_CA_FILE: runtime/test-ca/fullchain.pem
+        run: python3 scripts/probe.py --integration
+      - name: Persistence after restart
+        env:
+          PROBE_CA_FILE: runtime/test-ca/fullchain.pem
+        run: |
+          make compose ARGS='stop synapse'
+          make compose ARGS='restart postgres'
+          make compose ARGS='up -d --wait --wait-timeout 240'
+          python3 scripts/probe.py --persistence
+      - name: Test backup and restore on new named volumes
+        env:
+          PROBE_CA_FILE: runtime/test-ca/fullchain.pem
+        run: python3 scripts/ci_recovery.py
+      - uses: docker/login-action@v3
+        if: github.event_name != 'pull_request'
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+      - name: Publish tested image
+        if: github.event_name != 'pull_request'
+        env:
+          PREFIX: ${{ steps.names.outputs.prefix }}
+          SHA: ${{ github.sha }}
+          REF: ${{ github.ref }}
+        run: |
+          docker tag "$PREFIX/web:ci" "$PREFIX/web:sha-$SHA"
+          docker push "$PREFIX/web:sha-$SHA"
+          if [ "$REF" = refs/heads/main ] || [ "$REF" = refs/heads/master ]; then
+            docker tag "$PREFIX/web:ci" "$PREFIX/web:main"
+            docker push "$PREFIX/web:main"
+          fi
+          if [[ "$REF" == refs/tags/v* ]]; then
+            docker tag "$PREFIX/web:ci" "$PREFIX/web:${REF#refs/tags/}"
+            docker push "$PREFIX/web:${REF#refs/tags/}"
+          fi
+      - name: Diagnostics
+        if: failure()
+        run: |
+          make compose ARGS='ps' || true
+          make compose ARGS='logs --tail=80' || true
+      - name: Remove disposable resources
+        if: always()
+        run: make compose ARGS='down -v' || true
+  deploy:
+    needs: build
+    if: >-
+      github.event_name != 'pull_request' && vars.DEPLOY_ENABLED == 'true' &&
+      github.ref == format('refs/heads/{0}', github.event.repository.default_branch)
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    environment: production
+    concurrency:
+      group: matrix-production
+      cancel-in-progress: false
+    steps:
+      - uses: actions/checkout@v4
+      - name: SSH deployment of tested SHA
+        env:
+          VPS_HOST: ${{ secrets.VPS_HOST }}
+          VPS_PORT: ${{ secrets.VPS_PORT }}
+          VPS_USER: ${{ secrets.VPS_USER }}
+          VPS_PATH: ${{ secrets.VPS_PATH }}
+          VPS_SSH_KEY: ${{ secrets.VPS_SSH_KEY }}
+          VPS_KNOWN_HOSTS: ${{ secrets.VPS_KNOWN_HOSTS }}
+          DEPLOY_SHA: ${{ github.sha }}
+        run: python3 scripts/remote_deploy.py

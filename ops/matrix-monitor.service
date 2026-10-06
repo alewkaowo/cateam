@@ -1,0 +1,8 @@
+[Unit]
+Description=Check Matrix disk reserve and block uploads when space is low
+After=docker.service
+
+[Service]
+Type=oneshot
+WorkingDirectory=/opt/matrix-infrastructure
+ExecStart=/usr/bin/python3 /opt/matrix-infrastructure/scripts/manage.py monitor

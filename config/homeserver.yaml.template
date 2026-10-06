@@ -1,0 +1,66 @@
+server_name: "${MATRIX_DOMAIN}"
+public_baseurl: "https://${MATRIX_DOMAIN}/"
+pid_file: /data/homeserver.pid
+report_stats: false
+enable_registration: false
+enable_registration_without_verification: false
+allow_guest_access: false
+registration_shared_secret: "${REGISTRATION_SECRET}"
+macaroon_secret_key: "${MACAROON_SECRET}"
+form_secret: "${FORM_SECRET}"
+signing_key_path: /data/signing.key
+media_store_path: /data/media_store
+log_config: /config/log.config
+max_upload_size: ${MAX_UPLOAD_MB}M
+url_preview_enabled: false
+enable_search: false
+presence:
+  enabled: false
+listeners:
+  - port: 8008
+    tls: false
+    bind_addresses: ["0.0.0.0"]
+    type: http
+    x_forwarded: true
+    resources:
+      - names: ${LISTENER_RESOURCES}
+        compress: false
+database:
+  name: psycopg2
+  args:
+    user: synapse
+    password: "${POSTGRES_PASSWORD}"
+    database: synapse
+    host: postgres
+    port: 5432
+    cp_min: 2
+    cp_max: 10
+caches:
+  global_factor: 0.3
+  sync_response_cache_duration: 30s
+${FEDERATION_CONFIG}
+app_service_config_files: [/config/matrixrtc-registration.yaml]
+experimental_features:
+  msc3266_enabled: true
+  msc4143_enabled: true
+  msc4222_enabled: true
+  msc4502_enabled: true
+  msc4512_enabled: true
+matrix_rtc:
+  transports:
+    - type: livekit
+      url: "wss://${RTC_DOMAIN}/livekit/sfu"
+max_event_delay_duration: 24h
+rc_message:
+  per_second: 0.5
+  burst_count: 30
+rc_delayed_event_mgmt:
+  per_second: 1
+  burst_count: 20
+turn_uris:
+  - "turn:${RTC_DOMAIN}:${TURN_PORT}?transport=udp"
+  - "turn:${RTC_DOMAIN}:${TURN_PORT}?transport=tcp"
+  - "turns:${RTC_DOMAIN}:${TURN_TLS_PORT}?transport=tcp"
+turn_shared_secret: "${TURN_SECRET}"
+turn_user_lifetime: 1h
+turn_allow_guests: false

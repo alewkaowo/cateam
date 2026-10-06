@@ -1,0 +1,170 @@
+name: ${COMPOSE_PROJECT_NAME:-matrix}
+x-logging: &logging
+  driver: json-file
+  options:
+    max-size: "10m"
+    max-file: "3"
+x-common: &common
+  restart: unless-stopped
+  logging: *logging
+  security_opt: ["no-new-privileges:true"]
+services:
+  postgres:
+    <<: *common
+    image: ${POSTGRES_IMAGE:?Use --env-file versions.env --env-file .env}
+    mem_limit: 512m
+    shm_size: 128m
+    stop_grace_period: 60s
+    environment:
+      POSTGRES_DB: synapse
+      POSTGRES_USER: synapse
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?Run make init}
+      POSTGRES_INITDB_ARGS: "--encoding=UTF8 --locale=C"
+    command: ["postgres", "-c", "shared_buffers=128MB", "-c", "work_mem=2MB", "-c", "maintenance_work_mem=64MB", "-c", "effective_cache_size=512MB", "-c", "max_connections=40", "-c", "max_wal_size=512MB", "-c", "min_wal_size=80MB", "-c", "jit=off"]
+    volumes: ["postgres_data:/var/lib/postgresql"]
+    networks: [database]
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U synapse -d synapse"]
+      interval: 10s
+      timeout: 5s
+      retries: 15
+  synapse:
+    <<: *common
+    image: ${SYNAPSE_IMAGE:?Set SYNAPSE_IMAGE}
+    user: "991:991"
+    mem_limit: 1536m
+    stop_grace_period: 90s
+    environment:
+      SYNAPSE_CONFIG_PATH: /config/homeserver.yaml
+      SYNAPSE_CACHE_FACTOR: "0.3"
+      PYTHONDONTWRITEBYTECODE: "1"
+    volumes:
+      - synapse_data:/data
+      - ./runtime/synapse:/config:ro
+    networks: [database, backend, edge]
+    depends_on:
+      postgres:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8008/health', timeout=5)"]
+      interval: 20s
+      timeout: 8s
+      retries: 10
+      start_period: 90s
+  livekit:
+    <<: *common
+    image: ${LIVEKIT_IMAGE:?Set LIVEKIT_IMAGE}
+    user: "10001:10001"
+    cap_drop: [ALL]
+    mem_limit: 1024m
+    stop_grace_period: 90s
+    command: ["--config", "/config/livekit.yaml"]
+    volumes: ["./runtime/livekit:/config:ro"]
+    networks: [backend, media]
+    ports:
+      - "${LIVEKIT_TCP_PORT:-7881}:${LIVEKIT_TCP_PORT:-7881}/tcp"
+      - "${LIVEKIT_UDP_START:-7882}-${LIVEKIT_UDP_END:-7883}:${LIVEKIT_UDP_START:-7882}-${LIVEKIT_UDP_END:-7883}/udp"
+    # Minimal upstream image: HTTP readiness checked by scripts/probe.py.
+  matrixrtc:
+    <<: *common
+    image: ${MATRIXRTC_IMAGE:?Set MATRIXRTC_IMAGE}
+    user: "10001:10001"
+    cap_drop: [ALL]
+    mem_limit: 256m
+    stop_grace_period: 30s
+    volumes: ["./runtime/matrixrtc:/config:ro"]
+    environment:
+      LIVEKIT_URL: wss://${RTC_DOMAIN:?Set RTC_DOMAIN}/livekit/sfu
+      LIVEKIT_KEY_FROM_FILE: /config/livekit-key
+      LIVEKIT_SECRET_FROM_FILE: /config/livekit-secret
+      LIVEKIT_FULL_ACCESS_HOMESERVERS: ${MATRIX_DOMAIN:?Set MATRIX_DOMAIN}
+      LIVEKIT_JWT_BIND: 0.0.0.0:8080
+      LIVEKIT_AS_REGISTRATION_FILE: /config/registration.yaml
+      LIVEKIT_HS_SERVER_NAME: ${MATRIX_DOMAIN}
+      LIVEKIT_CS_API_URL_OVERRIDES: ${MATRIX_DOMAIN}=http://synapse:8008
+      LIVEKIT_SANITY_CHECK_INTERVAL_SECONDS: "30"
+      LIVEKIT_LOG_LEVEL: info
+    networks: [backend, edge]
+    depends_on:
+      synapse:
+        condition: service_healthy
+      livekit:
+        condition: service_started
+    # Inherits upstream /lk-jwt-service-healthcheck.
+  nginx:
+    <<: *common
+    image: ${IMAGE_PREFIX:?Set IMAGE_PREFIX}/web:${IMAGE_TAG:-main}
+    mem_limit: 128m
+    stop_grace_period: 30s
+    ports:
+      - "${HTTP_PORT:-80}:80/tcp"
+      - "${HTTPS_PORT:-443}:443/tcp"
+    volumes:
+      - ./runtime/nginx:/etc/nginx/conf.d:ro
+      - ./runtime/element.json:/usr/share/nginx/html/config.json:ro
+      - tls_data:/etc/letsencrypt:ro
+      - acme_data:/var/www/acme:ro
+    networks: [edge, backend]
+    healthcheck:
+      test: ["CMD", "wget", "-q", "-O", "/dev/null", "http://127.0.0.1/healthz"]
+      interval: 20s
+      timeout: 5s
+      retries: 5
+  coturn:
+    <<: *common
+    image: ${COTURN_IMAGE:?Set COTURN_IMAGE}
+    user: "10001:10001"
+    cap_drop: [ALL]
+    # Upstream turnserver binary carries a NET_BIND_SERVICE file capability.
+    cap_add: [NET_BIND_SERVICE]
+    mem_limit: 256m
+    stop_grace_period: 30s
+    tmpfs:
+      - /var/lib/coturn:rw,noexec,nosuid,size=8m,uid=10001,gid=10001,mode=0700
+    # Host networking avoids hundreds of DNAT rules and preserves relay addressing.
+    # Only configured TURN/media ports listen; management CLI disabled.
+    network_mode: host
+    command: ["-c", "/config/turnserver.conf"]
+    volumes:
+      - ./runtime/coturn:/config:ro
+      - turn_tls:/tls:ro
+    healthcheck:
+      test: ["CMD", "turnutils_stunclient", "-p", "${TURN_PORT:-3478}", "127.0.0.1"]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+  certbot:
+    image: ${CERTBOT_IMAGE:?Set CERTBOT_IMAGE}
+    profiles: [tools]
+    mem_limit: 256m
+    logging: *logging
+    volumes:
+      - tls_data:/etc/letsencrypt
+      - acme_data:/var/www/acme
+    networks: [edge]
+  tools:
+    image: ${TOOLS_IMAGE:?Set TOOLS_IMAGE}
+    profiles: [tools]
+    mem_limit: 128m
+    logging: *logging
+    volumes:
+      - synapse_data:/synapse
+      - tls_data:/tls
+      - turn_tls:/turn-tls
+      - acme_data:/acme
+      - ./backups:/backup
+    networks: [backend]
+    entrypoint: ["/bin/sh", "-c"]
+networks:
+  edge:
+  database:
+    internal: true
+  backend:
+    internal: true
+  media:
+volumes:
+  postgres_data:
+  synapse_data:
+  tls_data:
+  acme_data:
+  turn_tls:

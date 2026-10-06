@@ -1,0 +1,29 @@
+port: 7880
+bind_addresses: ["0.0.0.0"]
+rtc:
+  tcp_port: ${LIVEKIT_TCP_PORT}
+  udp_port: "${LIVEKIT_UDP_START}-${LIVEKIT_UDP_END}"
+  use_external_ip: false
+  node_ip: "${PUBLIC_IPV4}"
+  stun_servers:
+    - "${RTC_DOMAIN}:${TURN_PORT}"
+  turn_servers:
+    - host: "${RTC_DOMAIN}"
+      port: ${TURN_PORT}
+      protocol: udp
+      secret: "${TURN_SECRET}"
+    - host: "${RTC_DOMAIN}"
+      port: ${TURN_TLS_PORT}
+      protocol: tls
+      secret: "${TURN_SECRET}"
+keys:
+  ${LIVEKIT_API_KEY}: "${LIVEKIT_API_SECRET}"
+room:
+  auto_create: false
+  max_participants: 10
+  empty_timeout: 300
+webhook:
+  api_key: "${LIVEKIT_API_KEY}"
+  urls: ["http://matrixrtc:8080/sfu_webhook"]
+logging:
+  level: info
