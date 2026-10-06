@@ -49,11 +49,11 @@ jobs:
           make compose ARGS='exec -T nginx nginx -t'
       - name: Chat, files, MatrixRTC JWT and SFU WebSocket
         env:
-          PROBE_CA_FILE: runtime/test-ca/fullchain.pem
+          PROBE_CA_FILE: runtime/test-ca/ca.pem
         run: python3 scripts/probe.py --integration
       - name: Persistence after restart
         env:
-          PROBE_CA_FILE: runtime/test-ca/fullchain.pem
+          PROBE_CA_FILE: runtime/test-ca/ca.pem
         run: |
           make compose ARGS='stop synapse'
           make compose ARGS='restart postgres'
@@ -61,7 +61,7 @@ jobs:
           python3 scripts/probe.py --persistence
       - name: Test backup and restore on new named volumes
         env:
-          PROBE_CA_FILE: runtime/test-ca/fullchain.pem
+          PROBE_CA_FILE: runtime/test-ca/ca.pem
         run: python3 scripts/ci_recovery.py
       - uses: docker/login-action@v3
         if: github.event_name != 'pull_request'

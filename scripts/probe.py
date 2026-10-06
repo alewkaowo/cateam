@@ -26,6 +26,12 @@ def describe_http_error(error, method, host, path):
         body = json.loads(error.read(8192))
         code = body.get('errcode') if isinstance(body, dict) else None
         detail = code if isinstance(code, str) and re.fullmatch(r'M_[A-Z0-9_]{1,80}', code) else 'JSON response'
+        # Only fixed upstream messages, never arbitrary server-provided text.
+        known = {'Unable to create room on SFU', 'Unable to verify room membership',
+                 'Internal Server Error', 'The requesting user is not a member of the room'}
+        message = body.get('error') if isinstance(body, dict) else None
+        if isinstance(message, str) and message in known:
+            detail += ': ' + message
     except (ValueError, OSError):
         pass
     return f'{method} https://{host}{urlsplit(path).path}: HTTP {error.code} ({detail})'

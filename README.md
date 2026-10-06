@@ -508,6 +508,7 @@ curl -fsS https://matrix.cateam.online/.well-known/matrix/client
 - **RTC transport отсутствует:** проверить msc4143, matrix_rtc.transports и `/rtc/transports` с access token.
 - **JWT 403:** аккаунт должен быть членом Matrix-комнаты; не расширять доступ до `*`.
 - **JWT 502:** проверить registration scopes/proxy keys, внутренний Synapse URL override, TLS доверие и доступ auth к SFU RoomService.
+- **JWT 500:** проверить ошибки `CreateLiveKitRoom` в matrixrtc и traceback Synapse. Создание комнаты на SFU может вернуть 500 при ошибке подключения, TLS или LiveKit API. В CI используются отдельные CA (`ca.pem`) и серверный сертификат (`fullchain.pem`, `CA:FALSE`, `serverAuth`); сертификат CA нельзя отдавать как серверный сертификат Rust TLS-клиенту.
 - **WSS 502:** проверить nginx rewrite `/livekit/sfu/`, backend DNS и LiveKit 7880.
 - **Звонок есть, медиа нет:** проверить UDP mux, PUBLIC_IPV4, TURN credentials, relay range и provider NAT; HTTPS alone недостаточно.
 - **HTTP 507:** проверить диск и monitor journal, освободить место, выполнить `make monitor`.
@@ -516,7 +517,12 @@ curl -fsS https://matrix.cateam.online/.well-known/matrix/client
 
 Локально выполнены config/security unit tests, Python/shell syntax checks,
 проверка `docker compose config` и существования закреплённых Docker tags.
-**Не выполнены здесь:** запуск всего стека (Docker daemon недоступен), GitHub CI,
+06.10.2026 на изолированном стенде Docker Desktop также прошли сборка web-образа,
+запуск всех сервисов, HTTPS/API, чат и файлы, MatrixRTC JWT/access control,
+SFU WebSocket, сохранность после перезапуска и реальный backup/restore в новые
+volumes. В локальном стенде изменены опубликованные HTTP-порты и разрешение
+тестовых DNS-имён; это не проверка production VPS или передачи медиа.
+**Не выполнены здесь:** GitHub CI после этих исправлений, SSH-деплой на VPS,
 production HTTPS/DNS, аудио/видео, шестисторонний звонок, screen sharing,
 реальные NAT/TURN сети, E2EE между устройствами и нагрузка VPS. См.
 [docs/acceptance.md](docs/acceptance.md). Эти проверки нельзя считать пройденными

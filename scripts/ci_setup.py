@@ -20,23 +20,39 @@ configure(e)
 cert = ROOT / 'runtime/test-ca'
 cert.mkdir()
 subprocess.run(['openssl', 'req', '-x509', '-newkey', 'rsa:2048', '-nodes', '-days', '2',
-                '-keyout', str(cert / 'privkey.pem'), '-out', str(cert / 'fullchain.pem'),
+                '-keyout', str(cert / 'ca-key.pem'), '-out', str(cert / 'ca.pem'),
                 '-subj', '/CN=Matrix CI', '-addext', 'basicConstraints=critical,CA:TRUE',
-                '-addext', 'subjectAltName=DNS:matrix.ci.test,DNS:chat.ci.test,DNS:rtc.ci.test'],
+                '-addext', 'keyUsage=critical,keyCertSign,cRLSign'],
                check=True, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+subprocess.run(['openssl', 'req', '-new', '-newkey', 'rsa:2048', '-nodes',
+                '-keyout', str(cert / 'privkey.pem'), '-out', str(cert / 'server.csr'),
+                '-subj', '/CN=matrix.ci.test'],
+               check=True, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+write(cert / 'server.ext', '''basicConstraints=critical,CA:FALSE
+keyUsage=critical,digitalSignature,keyEncipherment
+extendedKeyUsage=serverAuth
+subjectAltName=DNS:matrix.ci.test,DNS:chat.ci.test,DNS:rtc.ci.test
+''')
+subprocess.run(['openssl', 'x509', '-req', '-in', str(cert / 'server.csr'),
+                '-CA', str(cert / 'ca.pem'), '-CAkey', str(cert / 'ca-key.pem'),
+                '-CAcreateserial', '-days', '2', '-extfile', str(cert / 'server.ext'),
+                '-out', str(cert / 'fullchain.pem')],
+               check=True, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+subprocess.run(['openssl', 'verify', '-purpose', 'sslserver', '-CAfile', str(cert / 'ca.pem'),
+                str(cert / 'fullchain.pem')], check=True)
 # Trust this test CA, rather than disabling TLS validation in the authorization service.
 write(ROOT / 'runtime/ci-compose.yaml', '''services:
   matrixrtc:
     extra_hosts:
       - "rtc.ci.test:host-gateway"
     volumes:
-      - ./runtime/test-ca/fullchain.pem:/etc/ssl/certs/ca-certificates.crt:ro
+      - ./runtime/test-ca/ca.pem:/etc/ssl/certs/ca-certificates.crt:ro
   livekit:
     extra_hosts:
       - "rtc.ci.test:host-gateway"
 ''')
 compose('run', '--rm', '--no-deps', '-T', '-v', str(cert) + ':/test-ca:ro', 'tools',
-        'mkdir -p /tls/live/matrix && cp /test-ca/*.pem /tls/live/matrix/ && chmod 600 /tls/live/matrix/privkey.pem')
+        'mkdir -p /tls/live/matrix && cp /test-ca/fullchain.pem /test-ca/privkey.pem /tls/live/matrix/ && chmod 600 /tls/live/matrix/privkey.pem')
 initialize(e)
 copy_turn_tls()
 # Host probe uses verified TLS and the normal production URLs.

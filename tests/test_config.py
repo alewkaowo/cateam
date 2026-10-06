@@ -84,6 +84,15 @@ class ConfigurationTests(unittest.TestCase):
             with self.assertRaises(ValueError):
                 manage.safe_archive(path, {'synapse', 'tls'})
 
+    def test_empty_compose_output_does_not_block_restore(self):
+        for output in ('', '\n', '\r\n', '  \n'):
+            with self.subTest(output=output), patch.object(manage, 'compose') as compose:
+                compose.return_value.stdout = output
+                self.assertEqual(manage.running(), [])
+        with patch.object(manage, 'compose') as compose:
+            compose.return_value.stdout = 'postgres\nsynapse\n'
+            self.assertEqual(manage.running(), ['postgres', 'synapse'])
+
     def test_disk_guard_blocks_and_recovers(self):
         with tempfile.TemporaryDirectory() as folder, patch.object(manage, 'ROOT', Path(folder)):
             with patch.object(manage, 'available_disk', side_effect=ValueError('Low disk')):

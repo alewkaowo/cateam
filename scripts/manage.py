@@ -184,7 +184,7 @@ with urllib.request.urlopen(r) as response: assert response.status==200
 
 
 def running():
-    return compose('ps', '--status', 'running', '--services', capture_output=True, text=True).stdout.splitlines()
+    return compose('ps', '--status', 'running', '--services', capture_output=True, text=True).stdout.split()
 
 
 def backup(e):
