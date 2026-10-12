@@ -50,6 +50,7 @@ matrix_rtc:
   transports:
     - type: livekit
       url: "wss://${RTC_DOMAIN}/livekit/sfu"
+      livekit_service_url: "https://${RTC_DOMAIN}/livekit/compat"
 max_event_delay_duration: 24h
 rc_message:
   per_second: 0.5

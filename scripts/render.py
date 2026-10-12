@@ -161,7 +161,21 @@ server {{
         proxy_set_header Upgrade $http_upgrade;
         proxy_set_header Connection $connection_upgrade;
 {proxy}    }}
-    # Authorization is proxied by Synapse (MSC4512), never exposed directly.
+    location = /livekit/compat/sfu/get {{
+        client_max_body_size 16k;
+        limit_req zone=rtc_compat burst=10 nodelay;
+        set $compat http://rtc-compat:8081;
+        rewrite ^/livekit/compat/(.*)$ /$1 break;
+        proxy_pass $compat;
+{proxy}    }}
+    location = /livekit/compat/get_token {{
+        client_max_body_size 16k;
+        limit_req zone=rtc_compat burst=10 nodelay;
+        set $compat http://rtc-compat:8081;
+        rewrite ^/livekit/compat/(.*)$ /$1 break;
+        proxy_pass $compat;
+{proxy}    }}
+    # Modern authorization goes through Synapse; compatibility verifies membership.
     location / {{ return 404; }}
 }}
 '''
@@ -200,6 +214,7 @@ def configure(e, bootstrap=False):
     write(ROOT / 'runtime/matrixrtc/registration.yaml', content)
     write(ROOT / 'runtime/matrixrtc/livekit-key', e['LIVEKIT_API_KEY'] + '\n')
     write(ROOT / 'runtime/matrixrtc/livekit-secret', e['LIVEKIT_API_SECRET'] + '\n')
+    write(ROOT / 'runtime/matrixrtc/as-token', e['RTC_AS_TOKEN'] + '\n')
     write(ROOT / 'runtime/nginx/default.conf', nginx(e, bootstrap))
     write(ROOT / 'runtime/synapse/log.config', (ROOT / 'config/synapse-log.config').read_text())
     element = {

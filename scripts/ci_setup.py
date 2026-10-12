@@ -45,6 +45,7 @@ write(ROOT / 'runtime/ci-compose.yaml', '''services:
   matrixrtc:
     extra_hosts:
       - "rtc.ci.test:host-gateway"
+      - "matrix.ci.test:host-gateway"
     volumes:
       - ./runtime/test-ca/ca.pem:/etc/ssl/certs/ca-certificates.crt:ro
   livekit:

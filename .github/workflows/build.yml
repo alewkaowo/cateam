@@ -90,7 +90,7 @@ jobs:
         if: failure()
         run: |
           make compose ARGS='ps' || true
-          make compose ARGS='logs --no-color --tail=200 synapse matrixrtc nginx livekit postgres' || true
+          make compose ARGS='logs --no-color --tail=200 synapse matrixrtc rtc-compat nginx livekit postgres' || true
       - name: Remove disposable resources
         if: always()
         run: make compose ARGS='down -v' || true

@@ -5,6 +5,8 @@ RUN curl --fail --location --retry 3 https://github.com/element-hq/element-web/r
     && mkdir /element && tar -xzf /tmp/element.tar.gz --strip-components=1 -C /element \
     && test -s /element/index.html && test -s /element/widgets/element-call/index.html
 FROM nginx:1.30.4-alpine
+RUN apk add --no-cache python3
+COPY scripts/rtc_compat.py /opt/rtc_compat.py
 COPY --from=element /element/ /usr/share/nginx/html/
 COPY config/nginx.conf /etc/nginx/nginx.conf
 STOPSIGNAL SIGQUIT

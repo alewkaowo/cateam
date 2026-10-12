@@ -91,6 +91,31 @@ services:
       livekit:
         condition: service_started
     # Inherits upstream /lk-jwt-service-healthcheck.
+  rtc-compat:
+    <<: *common
+    image: ${IMAGE_PREFIX:?Set IMAGE_PREFIX}/web:${IMAGE_TAG:-main}
+    entrypoint: ["python3", "/opt/rtc_compat.py"]
+    stop_signal: SIGTERM
+    user: "10001:10001"
+    cap_drop: [ALL]
+    read_only: true
+    mem_limit: 64m
+    stop_grace_period: 10s
+    environment:
+      MATRIX_DOMAIN: ${MATRIX_DOMAIN}
+      PYTHONDONTWRITEBYTECODE: "1"
+    volumes: ["./runtime/matrixrtc/as-token:/config/as-token:ro"]
+    networks: [backend]
+    depends_on:
+      synapse:
+        condition: service_healthy
+      matrixrtc:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "python3", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8081/health', timeout=3)"]
+      interval: 20s
+      timeout: 5s
+      retries: 5
   nginx:
     <<: *common
     image: ${IMAGE_PREFIX:?Set IMAGE_PREFIX}/web:${IMAGE_TAG:-main}

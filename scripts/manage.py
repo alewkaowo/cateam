@@ -16,7 +16,7 @@ import tarfile
 
 from render import ROOT, SECRETS, configure, load, read_env, validate, write
 
-SERVICES = ('postgres', 'synapse', 'livekit', 'matrixrtc', 'nginx', 'coturn')
+SERVICES = ('postgres', 'synapse', 'livekit', 'matrixrtc', 'rtc-compat', 'nginx', 'coturn')
 
 
 def compose_args():

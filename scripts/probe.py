@@ -150,6 +150,27 @@ def main():
             raise AssertionError('Nonmember obtained RTC token')
         except HTTPError as err:
             assert err.code == 403
+    # Exercise the same OpenID authorization used by Element X 26.09.4.
+    def compatibility_token(login, endpoint='sfu/get'):
+        oid = api('/_matrix/client/v3/user/' + quote(login['user_id'], safe='') + '/openid/request_token',
+                  'POST', {}, login['access_token'])
+        body = {'room': room, 'device_id': login['device_id'], 'openid_token': oid}
+        if endpoint == 'get_token':
+            body = {'room_id': room, 'slot_id': 'm.call#ROOM', 'openid_token': oid,
+                    'member': {'id': 'acceptance', 'claimed_device_id': login['device_id'],
+                               'claimed_user_id': login['user_id']}}
+        return request(e['RTC_DOMAIN'], '/livekit/compat/' + endpoint, 'POST', body)
+    legacy = compatibility_token(logins[0])
+    assert legacy['url'] == f'wss://{e["RTC_DOMAIN"]}/livekit/sfu'
+    assert legacy['jwt']
+    assert compatibility_token(logins[0], 'get_token')['jwt']
+    if len(logins) > 2:
+        try:
+            compatibility_token(logins[2])
+            raise AssertionError('Nonmember obtained compatibility token')
+        except HTTPError as err:
+            assert err.code == 403
+    print('Element X compatibility: OpenID token accepted; room membership enforced', flush=True)
     # Verify an actual WebSocket upgrade; no media is published by this API test.
     key = base64.b64encode(secrets.token_bytes(16)).decode()
     import socket
