@@ -133,6 +133,12 @@ def main():
     assert api(mediapath, token=token, raw=True) == content
     transports = api('/_matrix/client/unstable/org.matrix.msc4143/rtc/transports', token=owner)['rtc_transports']
     assert any(t.get('url') == f'wss://{e["RTC_DOMAIN"]}/livekit/sfu' for t in transports)
+    if not any(t.get('type') == 'livekit' and t.get('livekit_service_url') ==
+               f'https://{e["RTC_DOMAIN"]}/livekit/compat' for t in transports):
+        print('RTC registry lacks Element X compatibility URL. Apply updated configuration and restart Synapse.',
+              file=sys.stderr, flush=True)
+        raise AssertionError('RTC compatibility transport missing')
+    print('RTC registry: modern URL and Element X compatibility URL both present', flush=True)
     payload = {'server_name': e['MATRIX_DOMAIN'], 'url': f'wss://{e["RTC_DOMAIN"]}/livekit/sfu',
                'room_id': room, 'slot_id': 'm.call',
                'member': {'id': 'acceptance', 'claimed_device_id': logins[0]['device_id']}}

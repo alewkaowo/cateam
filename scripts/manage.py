@@ -139,6 +139,10 @@ def deploy(e, pull=True):
         copy_turn_tls()
     configure(e)
     compose('up', '-d', '--wait', '--wait-timeout', '240', *SERVICES)
+    # Compose does not detect changes inside bind-mounted configuration files.
+    # Synapse must read the rendered RTC registry and appservice config again.
+    compose('restart', 'synapse')
+    compose('up', '-d', '--wait', '--wait-timeout', '240', *SERVICES)
     compose('exec', '-T', 'nginx', 'nginx', '-t')
     compose('exec', '-T', 'nginx', 'nginx', '-s', 'reload')
     # A restored certificate may be expired. Renew before the public TLS probe.
